@@ -1,5 +1,6 @@
 from robot_arm.common.utils import *
 from robot_arm.common.arm import RobotArm
+import time
 
 
 def set_home():
@@ -25,10 +26,19 @@ def set_home():
     home_positions = {}
     try:
         # Initialize home positions for each motor
-        for id in DXL_IDS:
-            position = arm.read_position(id)
-            # Initialize home position to current position
-            home_positions[id] = position
+        while True:
+            time.sleep(0.5)
+            valid_positions = {}
+            for id in DXL_IDS:
+                position = arm.read_position(id)
+                if position != 0:
+                    valid_positions[id] = position
+
+            if len(valid_positions) == len(DXL_IDS):
+                home_positions = valid_positions
+                break
+
+            logger.info("Some motor positions are 0. Retrying...")
 
     except KeyboardInterrupt:
         logger.info("Operation cancelled by user.")

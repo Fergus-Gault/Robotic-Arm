@@ -28,10 +28,8 @@ def calibrate():
 
     # Initialize motor limits with the first read position
     for id in DXL_IDS:
-        position = arm.read_position(id)
-
         # Initialize min and max to current position
-        motor_limits[id] = (position, position)
+        motor_limits[id] = (2048, 2048)
 
     try:
         logger.info(
@@ -39,6 +37,10 @@ def calibrate():
         while True:
             for id in DXL_IDS:
                 position = arm.read_position(id)
+                if position is None or position <= 0:
+                    logger.error(f"Failed to read position for motor {id}")
+                    continue
+                logger.debug(f"Motor {id} position: {position}")
                 current_min, current_max = motor_limits.get(
                     id, (position, position))
                 motor_limits[id] = (
@@ -52,7 +54,7 @@ def calibrate():
         pass  # Allow Ctrl+C to exit as well
 
     # Display the captured limits
-    logger.info("\n--- Recorded Motor Limits ---")
+    logger.info("--- Recorded Motor Limits ---")
     for id, (min_pos, max_pos) in motor_limits.items():
         logger.info(f"Motor {id}: Min={min_pos}, Max={max_pos}")
 
@@ -62,7 +64,7 @@ def calibrate():
             f.write(f"{id},{min_pos},{max_pos}\n")
 
     logger.info(
-        "\nCalibration complete! Motor limits saved to 'motor_limits.txt'")
+        "Calibration complete! Motor limits saved to 'motor_limits.txt'")
     arm.disconnect()
 
 
