@@ -75,19 +75,19 @@ class RobotArm:
         """
         self.task_handler.disable_torque()
 
-    def return_to_home(self):
+    def return_to_home(self, speed=0):
         """
         Return all motors to their home position.
         This function sends a command to return all motors to their home position.
         """
-        self.task_handler.return_to_home()
+        self.task_handler.return_to_home(speed)
 
-    def move_all_to_center(self):
+    def move_all_to_center(self, speed=0):
         """
         Move all motors to their center position.
         This function sends a command to move all motors to their center position.
         """
-        self.task_handler.move_all_to_center()
+        self.task_handler.move_all_to_center(speed)
 
     def get_motor_limits(self, motor_id=None):
         """

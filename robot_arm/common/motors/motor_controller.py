@@ -290,12 +290,13 @@ class MotorController:
         """
         velocity, dxl_comm_result, dxl_error = self.packet_handler.read4ByteTxRx(
             self.port_handler, id, ADDR_PRESENT_VELOCITY)
-        logger.debug(f"Motor {id} velocity: {velocity}")
         if dxl_comm_result != dxl.COMM_SUCCESS or dxl_error != 0:
             logger.warning(f"Failed to read velocity from motor {id}")
             return None
-        if velocity > 32767:  # convert from unsigned to signed
-            velocity -= 65536
+        # Convert from 32-bit unsigned to signed integer
+        if velocity > 0x7FFFFFFF:  # if highest bit is set (negative value)
+            velocity = velocity - 0x100000000
+        logger.debug(f"Motor {id} velocity: {velocity}")
         return velocity
 
     def add_motor(self, id, position):

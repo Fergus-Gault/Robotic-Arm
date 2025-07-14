@@ -165,7 +165,7 @@ class TaskHandler:
         self.motor_controller.disable_torque()
         logger.info("Torque disabled for all motors.")
 
-    def return_to_home(self):
+    def return_to_home(self, speed):
         """
         Return all motors to their home position.
         This function sends a command to return all motors to their home position.
@@ -174,7 +174,7 @@ class TaskHandler:
         self.task_queue.queue.clear()  # Clear the task queue before returning to home
         for id, home_position in self.motor_controller.home_positions.items():
             if id in self.motor_controller.ids:
-                self.add_move_task(id, home_position)
+                self.add_move_task(id, home_position, speed)
             else:
                 logger.warning(f"Motor ID {id} not found in connected motors.")
 
@@ -235,7 +235,7 @@ class TaskHandler:
         """
         self.motor_controller.motor_positions[motor_id] = position
 
-    def move_all_to_center(self):
+    def move_all_to_center(self, speed):
         """
         Move all motors to their center position.
         This function sends a command to move all motors to their center position.
@@ -243,4 +243,4 @@ class TaskHandler:
         logger.info("Moving all motors to center positions.")
         self.task_queue.queue.clear()
         for id in self.motor_controller.ids:
-            self.add_move_task(id, 2048)
+            self.add_move_task(id, 2048, speed)
