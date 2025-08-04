@@ -37,6 +37,24 @@ class RobotArm:
         """
         self.task_handler.add_move_task(motor_id, position, speed)
 
+    def move_realtime(self, motor_id, position, speed=0):
+        """
+        Move a motor with minimal latency for real-time control.
+        Bypasses the task queue for immediate execution.
+        :param motor_id: The ID of the motor to move.
+        :param position: The target position for the motor.
+        :param speed: The speed at which to move the motor.
+        """
+        return self.task_handler.move_direct(motor_id, position, speed)
+
+    def move_multiple_realtime(self, motor_positions, speed=0):
+        """
+        Move multiple motors simultaneously with minimal latency.
+        :param motor_positions: Dictionary of {motor_id: position}
+        :param speed: The speed at which to move the motors.
+        """
+        return self.task_handler.move_multiple_direct(motor_positions, speed)
+
     def stop(self, motor_id):
         """
         Stop a motor.

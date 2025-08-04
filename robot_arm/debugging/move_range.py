@@ -15,7 +15,8 @@ def move_range():
 
         # Function to move a motor through its range
         def move_motor_through_range(id):
-            logger.info(f"\nMoving motor ID {id} through positions...")
+            logger.info(
+                f"----- Moving motor ID {id} through positions... -----")
             motor_limits = arm.get_motor_limits(id)
             if motor_limits is None:
                 logger.error(f"No limits found for motor ID {id}")
@@ -29,7 +30,7 @@ def move_range():
             logger.info(f"Moving motor {id} to minimum position {min_pos}")
             arm.move(id, min_pos, arm.args.speed)
             while not arm.reached_position(id, min_pos):
-                time.sleep(0.5)  # Increased delay to reduce queue flooding
+                time.sleep(0.5)
             logger.info(f"Motor {id} reached minimum position")
             time.sleep(0.1)
 
@@ -37,7 +38,7 @@ def move_range():
             logger.info(f"Moving motor {id} to maximum position {max_pos}")
             arm.move(id, max_pos, arm.args.speed)
             while not arm.reached_position(id, max_pos):
-                time.sleep(0.5)  # Increased delay to reduce queue flooding
+                time.sleep(0.5)
             logger.info(f"Motor {id} reached maximum position")
             time.sleep(0.1)
 
@@ -45,11 +46,11 @@ def move_range():
             logger.info(f"Moving motor {id} to center position 2048")
             arm.move(id, 2048, arm.args.speed)
             while not arm.reached_position(id, 2048):
-                time.sleep(0.5)  # Increased delay to reduce queue flooding
+                time.sleep(0.5)
             logger.info(f"Motor {id} reached center position")
             time.sleep(0.1)
 
-            logger.info(f"Completed range for motor ID {id}")
+            logger.info(f"----- Completed range for motor ID {id} -----")
 
         # Move motor 1 through its range
         move_motor_through_range(1)
@@ -75,7 +76,7 @@ def move_range():
         motor_ids = arm.get_motor_ids()
 
         # Move all motors to their home positions
-        logger.info("\nMoving all motors to home positions...")
+        logger.info("----- Moving all motors to home positions... -----")
         arm.return_to_home(arm.args.speed)
 
         # Wait for all motors to reach home positions
@@ -94,7 +95,7 @@ def move_range():
 
     except KeyboardInterrupt:
         logger.info(
-            "\nKeyboard interrupt detected. Disabling torque and closing port...")
+            "----- Keyboard interrupt detected. Disabling torque and closing port... -----")
         arm.disconnect()
     finally:
         arm.disconnect()

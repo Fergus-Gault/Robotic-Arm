@@ -28,11 +28,11 @@ def set_home():
         # Initialize home positions for each motor
         while True:
             time.sleep(0.5)
-            valid_positions = {}
-            for id in DXL_IDS:
-                position = arm.read_position(id)
-                if position != 0:
-                    valid_positions[id] = position
+            valid_positions = arm.task_handler.motor_controller.read_all_positions()
+
+            # Filter out any zero positions (invalid readings)
+            valid_positions = {id: pos for id, pos in valid_positions.items()
+                               if pos != 0 and id in DXL_IDS}
 
             if len(valid_positions) == len(DXL_IDS):
                 home_positions = valid_positions

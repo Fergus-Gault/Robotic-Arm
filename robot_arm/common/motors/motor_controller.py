@@ -120,16 +120,39 @@ class MotorController:
         """
         position, dxl_comm_result, dxl_error = self.packet_handler.read4ByteTxRx(
             self.port_handler, id, ADDR_PRESENT_POSITION)
-        if dxl_comm_result != dxl.COMM_SUCCESS:
-            logger.warning(
-                f"Failed to read position from ID {id}: {self.packet_handler.getTxRxResult(dxl_comm_result)}")
+        if dxl_comm_result != dxl.COMM_SUCCESS or dxl_error != 0:
             return None
-        elif dxl_error != 0:
-            logger.warning(
-                f"Error reading position from ID {id}: {self.packet_handler.getRxPacketError(dxl_error)}")
-            return None
-
         return position
+
+    def read_all_positions(self) -> dict:
+        """
+        Read positions of all motors simultaneously using sync read for better performance.
+        :return: Dictionary of {motor_id: position}
+        """
+        positions = {}
+
+        # Use GroupSyncRead for bulk reading
+        groupSyncRead = dxl.GroupSyncRead(
+            self.port_handler, self.packet_handler, ADDR_PRESENT_POSITION, 4)
+
+        # Add all motor IDs to the sync read
+        for id in self.ids:
+            groupSyncRead.addParam(id)
+
+        # Execute sync read
+        dxl_comm_result = groupSyncRead.txRxPacket()
+        if dxl_comm_result != dxl.COMM_SUCCESS:
+            return positions
+
+        # Get data from each motor
+        for id in self.ids:
+            if groupSyncRead.isAvailable(id, ADDR_PRESENT_POSITION, 4):
+                position = groupSyncRead.getData(id, ADDR_PRESENT_POSITION, 4)
+                positions[id] = position
+                self.motor_positions[id] = position
+
+        groupSyncRead.clearParam()
+        return positions
 
     def move(self, id, position, speed=0) -> bool:
         """
@@ -145,45 +168,82 @@ class MotorController:
         if id in self.limits:
             min_limit, max_limit = self.limits[id]
             if position < min_limit:
-                logger.warning(
-                    f"Position {position} below minimum limit {min_limit} for ID {id}. Using minimum limit.")
                 position = min_limit
             elif position > max_limit:
-                logger.warning(
-                    f"Position {position} above maximum limit {max_limit} for ID {id}. Using maximum limit.")
                 position = max_limit
-        else:
-            logger.warning(
-                f"No limits found for ID {id}. Proceeding without limit check.")
 
         # Set speed if specified
         if speed > 0:
             dxl_comm_result, dxl_error = self.packet_handler.write4ByteTxRx(
                 self.port_handler, id, ADDR_PROFILE_VELOCITY, speed)
 
-            if dxl_comm_result != dxl.COMM_SUCCESS:
-                logger.warning(
-                    f"Failed to set speed for ID {id}: {self.packet_handler.getTxRxResult(dxl_comm_result)}")
-                return False
-            elif dxl_error != 0:
-                logger.warning(
-                    f"Error setting speed for ID {id}: {self.packet_handler.getRxPacketError(dxl_error)}")
+            if dxl_comm_result != dxl.COMM_SUCCESS or dxl_error != 0:
                 return False
 
         dxl_comm_result, dxl_error = self.packet_handler.write4ByteTxRx(
             self.port_handler, id, ADDR_GOAL_POSITION, position)
 
-        if dxl_comm_result != dxl.COMM_SUCCESS:
-            logger.warning(
-                f"Failed to move motor {id} to position {position}: {self.packet_handler.getTxRxResult(dxl_comm_result)}")
-            return False
-        elif dxl_error != 0:
-            logger.warning(
-                f"Error moving motor {id} to position {position}: {self.packet_handler.getRxPacketError(dxl_error)}")
+        if dxl_comm_result != dxl.COMM_SUCCESS or dxl_error != 0:
             return False
 
-        logger.info(f"Motor {id} moved to position {position}.")
         self.moving_motors[id] = position
+        return True
+
+    def move_multiple(self, motor_positions, speed=0) -> bool:
+        """
+        Move multiple motors simultaneously using sync write for better performance.
+        :param motor_positions: Dictionary of {motor_id: position}
+        :param speed: The speed at which to move the motors (optional).
+        :return: True if all moves were successful, False otherwise.
+        """
+        if not motor_positions:
+            return True
+
+        # Apply limits to all positions
+        validated_positions = {}
+        for id, position in motor_positions.items():
+            if id in self.limits:
+                min_limit, max_limit = self.limits[id]
+                position = max(min_limit, min(max_limit, position))
+            validated_positions[id] = position
+            self.add_motor(id, position)
+
+        # Set speed for all motors if specified
+        if speed > 0:
+            groupSyncWrite_speed = dxl.GroupSyncWrite(
+                self.port_handler, self.packet_handler, ADDR_PROFILE_VELOCITY, 4)
+
+            for id in validated_positions.keys():
+                speed_bytes = [dxl.DXL_LOBYTE(dxl.DXL_LOWORD(speed)),
+                               dxl.DXL_HIBYTE(dxl.DXL_LOWORD(speed)),
+                               dxl.DXL_LOBYTE(dxl.DXL_HIWORD(speed)),
+                               dxl.DXL_HIBYTE(dxl.DXL_HIWORD(speed))]
+                groupSyncWrite_speed.addParam(id, speed_bytes)
+
+            groupSyncWrite_speed.txPacket()
+            groupSyncWrite_speed.clearParam()
+
+        # Use sync write for positions
+        groupSyncWrite = dxl.GroupSyncWrite(
+            self.port_handler, self.packet_handler, ADDR_GOAL_POSITION, 4)
+
+        for id, position in validated_positions.items():
+            position_bytes = [dxl.DXL_LOBYTE(dxl.DXL_LOWORD(position)),
+                              dxl.DXL_HIBYTE(dxl.DXL_LOWORD(position)),
+                              dxl.DXL_LOBYTE(dxl.DXL_HIWORD(position)),
+                              dxl.DXL_HIBYTE(dxl.DXL_HIWORD(position))]
+            groupSyncWrite.addParam(id, position_bytes)
+
+        dxl_comm_result = groupSyncWrite.txPacket()
+        groupSyncWrite.clearParam()
+
+        if dxl_comm_result != dxl.COMM_SUCCESS:
+            return False
+
+        # Update moving motors
+        for id, position in validated_positions.items():
+            self.moving_motors[id] = position
+
         return True
 
     def remove_motor(self, id):

@@ -18,7 +18,8 @@ class TaskHandler:
         self.task_queue = Queue()
         self.running = False
         self.last_update_time = time.time()
-        self.time_between_updates = 0.1  # Time in seconds between updates
+        self.time_between_updates = 0.02  # Reduced to 20ms for better responsiveness
+        self.pending_moves = {}  # Buffer for batching move commands
 
     def start_motor_task_thread(self):
         """
@@ -41,36 +42,46 @@ class TaskHandler:
         This method runs in a separate thread and continuously processes tasks
         until the running flag is set to False.
         """
+        last_move_time = 0
+        move_batch_timeout = 0.005  # 5ms timeout for batching moves
+
         while self.running:
+            current_time = time.time()
+
+            # Process pending batched moves if timeout reached
+            if self.pending_moves and (current_time - last_move_time) > move_batch_timeout:
+                self.motor_controller.move_multiple(self.pending_moves)
+                self.pending_moves.clear()
+                last_move_time = current_time
+
             try:
-                cmd: MotorCommand = self.task_queue.get(timeout=0.01)
+                cmd: MotorCommand = self.task_queue.get(
+                    timeout=0.001)  # Reduced timeout
 
                 if cmd.action == "move":
-                    self.motor_controller.move(
-                        cmd.id, cmd.data['position'], cmd.data['speed'])
+                    # Batch move commands for better performance
+                    self.pending_moves[cmd.id] = cmd.data['position']
+                    last_move_time = current_time
                 elif cmd.action == "stop":
                     self.stop(cmd.id)
                 elif cmd.action == "read_position":
-                    logger.debug(f"Reading position for motor {cmd.id}.")
                     position = self.motor_controller.read_position(cmd.id)
                     if cmd.callback:
                         cmd.callback(cmd.id, position)
                 elif cmd.action == "check_stall":
                     is_stalled = self.motor_controller.check_stall(cmd.id)
-                    logger.debug(
-                        f"Checking stall for motor {cmd.id}: {is_stalled}.")
                     if cmd.callback:
                         cmd.callback(cmd.id, is_stalled)
 
                 self.task_queue.task_done()
-                logger.debug("Processed task from the queue.")
             except Empty:
-                pass
+                # Execute pending moves even if queue is empty
+                if self.pending_moves and (current_time - last_move_time) > move_batch_timeout:
+                    self.motor_controller.move_multiple(self.pending_moves)
+                    self.pending_moves.clear()
 
             if time.time() - self.last_update_time > self.time_between_updates:
-                logger.debug(f"Tasks in queue: {self.task_queue.qsize()}")
                 self.last_update_time = time.time()
-                logger.debug("Updating motor positions and checking stalls.")
                 self.update_motors()
 
     def connect(self):
@@ -111,8 +122,24 @@ class TaskHandler:
         cmd = MotorCommand(action="move", id=motor_id,
                            data={'position': position, 'speed': speed})
         self.task_queue.put(cmd)
-        logger.debug(
-            f"Added move task for motor {motor_id} to position {position}.")
+
+    def move_direct(self, motor_id, position, speed=0):
+        """
+        Move a motor directly without using the queue for immediate execution.
+        Use this for real-time control for minimal latency.
+        :param motor_id: The ID of the motor to move.
+        :param position: The target position for the motor.
+        :param speed: The speed at which to move the motor.
+        """
+        return self.motor_controller.move(motor_id, position, speed)
+
+    def move_multiple_direct(self, motor_positions, speed=0):
+        """
+        Move multiple motors directly without using the queue.
+        :param motor_positions: Dictionary of {motor_id: position}
+        :param speed: The speed at which to move the motors.
+        """
+        return self.motor_controller.move_multiple(motor_positions, speed)
 
     def add_stop_task(self, motor_id):
         """
@@ -198,17 +225,24 @@ class TaskHandler:
         logger.debug(f"Added stall check task for motor {motor_id}.")
 
     def update_motors(self):
+        """Motor update using bulk reads."""
+        if not self.motor_controller.moving_motors:
+            return
+
+        current_positions = self.motor_controller.read_all_positions()
+
         to_remove = []
-        for id, position in self.motor_controller.moving_motors.items():
-            self.read_position(id)
-            if self.reached_position(id, position):
-                logger.info(f"Motor {id} reached position {position}.")
+        for id, target_position in self.motor_controller.moving_motors.items():
+            current_position = current_positions.get(id)
+            if current_position is None:
+                continue
+
+            if abs(current_position - target_position) < DXL_MOVING_STATUS_THRESHOLD:
                 to_remove.append(id)
             else:
-                self.check_stall(id)
-                if self.motor_controller.stalled_motors[id] == 1:
-                    logger.warning(
-                        f"Motor {id} is stalled at position {self.read_position(id)}.")
+                # Only check stall for motors that haven't reached position
+                is_stalled = self.motor_controller.check_stall(id)
+                if is_stalled:
                     self.add_stop_task(id)
                     to_remove.append(id)
 

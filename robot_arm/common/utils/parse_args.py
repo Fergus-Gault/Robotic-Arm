@@ -11,6 +11,8 @@ def parse_args():
                         help='Speed for the robot arm movements.')
     parser.add_argument('--debug', action='store_true',
                         help='Enable debug mode for detailed logging.')
+    parser.add_argument('--cam-id', type=int, default=0,
+                        help='Camera ID for webcam control.')
 
     args = parser.parse_args()
     return args
