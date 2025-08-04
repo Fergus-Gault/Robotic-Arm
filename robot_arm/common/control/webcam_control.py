@@ -62,13 +62,13 @@ class WebcamControl:
         right_hip = pose_landmarks[self.mp_pose.PoseLandmark.RIGHT_HIP]
 
         # Motor 1: Base rotation (body orientation + right arm horizontal position)
-        if self.pose_control_active and all(lm.visibility > 0.5 for lm in [left_shoulder, right_shoulder, right_wrist]):
-            # Combine body orientation with arm horizontal position for intuitive control
+        if self.pose_control_active and all(lm.visibility > 0.5 for lm in [left_hip, right_hip, left_shoulder, right_shoulder]):
+            # Get difference between left and right hip and shoulders
             shoulder_line = right_shoulder.x - left_shoulder.x
-            wrist_offset = right_wrist.x - right_shoulder.x
-
+            hip_line = right_hip.x - left_hip.x
             # Weighted combination
-            base_rotation = (shoulder_line * 0.3 + wrist_offset * 0.7) * 100
+            base_rotation = (shoulder_line * 0.3 + hip_line * 0.7) * 100
+
             motor1_pos = self._map_to_motor_range(1, base_rotation, -50, 50)
             if motor1_pos is not None:
                 motor_updates[1] = motor1_pos
@@ -105,24 +105,15 @@ class WebcamControl:
         # Motor 4: Hand pitch (vertical hand tilt)
         if hand_landmarks and self.hand_control_active:
             # Use hand vertical orientation for pitch control
-            index_finger = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            pinky_finger = hand_landmarks.landmark[self.mp_hands.HandLandmark.PINKY_TIP]
             wrist = hand_landmarks.landmark[self.mp_hands.HandLandmark.WRIST]
 
             # Calculate pitch angle based on vertical position difference
             pitch_angle = math.degrees(math.atan2(
-                wrist.y - index_finger.y,
-                abs(index_finger.x - wrist.x) + 0.001  # Avoid division by zero
+                wrist.y - pinky_finger.y,
+                abs(pinky_finger.x - wrist.x) + 0.001  # Avoid division by zero
             ))
             motor4_pos = self._map_to_motor_range(4, pitch_angle, -60, 60)
-            if motor4_pos is not None:
-                motor_updates[4] = motor4_pos
-        elif self.pose_control_active and all(lm.visibility > 0.5 for lm in [right_elbow, right_wrist]):
-            # Fallback to wrist position relative to elbow
-            wrist_angle = math.degrees(math.atan2(
-                right_wrist.y - right_elbow.y,
-                right_wrist.x - right_elbow.x
-            ))
-            motor4_pos = self._map_to_motor_range(4, wrist_angle, -45, 45)
             if motor4_pos is not None:
                 motor_updates[4] = motor4_pos
 
@@ -138,6 +129,7 @@ class WebcamControl:
             motor5_pos = self._map_to_motor_range(5, rotation_angle, -90, 90)
             if motor5_pos is not None:
                 motor_updates[5] = motor5_pos
+
         elif self.pose_control_active and all(lm.visibility > 0.5 for lm in [right_elbow, right_wrist]):
             # Fallback to wrist twist using elbow-wrist vector
             wrist_twist = math.degrees(math.atan2(
@@ -225,16 +217,16 @@ class WebcamControl:
         """Draw comprehensive UI with status and controls."""
         h, w = frame.shape[:2]
 
-        # Control panel background
-        cv2.rectangle(frame, (10, 10), (400, 200), (0, 0, 0), -1)
-        cv2.rectangle(frame, (10, 10), (400, 200), (255, 255, 255), 2)
+        # Control panel background - larger for 720p
+        cv2.rectangle(frame, (10, 10), (500, 250), (0, 0, 0), -1)
+        cv2.rectangle(frame, (10, 10), (500, 250), (255, 255, 255), 2)
 
-        # Title
-        cv2.putText(frame, "Robot Arm Control", (20, 35),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+        # Title - larger font for 720p
+        cv2.putText(frame, "Robot Arm Control", (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 2)
 
-        # Status indicators
-        status_y = 60
+        # Status indicators - adjusted spacing for 720p
+        status_y = 75
         pose_color = (0, 255, 0) if pose_detected else (0, 0, 255)
         hand_color = (0, 255, 0) if hand_detected else (0, 0, 255)
         pose_control_color = (
@@ -243,27 +235,27 @@ class WebcamControl:
             0, 255, 0) if self.hand_control_active else (255, 0, 0)
 
         cv2.putText(frame, f"Pose: {'OK' if pose_detected else 'NO'}", (20, status_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, pose_color, 1)
-        cv2.putText(frame, f"Hand: {'OK' if hand_detected else 'NO'}", (100, status_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, hand_color, 1)
-        cv2.putText(frame, f"Pose Ctrl: {'ON' if self.pose_control_active else 'OFF'}", (180, status_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, pose_control_color, 1)
-        cv2.putText(frame, f"Hand Ctrl: {'ON' if self.hand_control_active else 'OFF'}", (300, status_y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, hand_control_color, 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, pose_color, 1)
+        cv2.putText(frame, f"Hand: {'OK' if hand_detected else 'NO'}", (130, status_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, hand_color, 1)
+        cv2.putText(frame, f"Pose Ctrl: {'ON' if self.pose_control_active else 'OFF'}", (240, status_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, pose_control_color, 1)
+        cv2.putText(frame, f"Hand Ctrl: {'ON' if self.hand_control_active else 'OFF'}", (380, status_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, hand_control_color, 1)
 
-        # Motor positions
-        motor_y = 85
+        # Motor positions - adjusted spacing
+        motor_y = 110
         for motor_id, position in motor_updates.items():
             cv2.putText(frame, f"M{motor_id}: {position}", (20, motor_y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-            motor_y += 15
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            motor_y += 20
 
-        # Instructions panel
-        instructions_x = w - 350
+        # Instructions panel - positioned for 720p
+        instructions_x = w - 450
         cv2.rectangle(frame, (instructions_x, 10),
-                      (w - 10, 250), (0, 0, 0), -1)
+                      (w - 10, 350), (0, 0, 0), -1)
         cv2.rectangle(frame, (instructions_x, 10),
-                      (w - 10, 250), (255, 255, 255), 2)
+                      (w - 10, 350), (255, 255, 255), 2)
 
         instructions = [
             "CONTROLS:",
@@ -293,12 +285,12 @@ class WebcamControl:
         for i, instruction in enumerate(instructions):
             color = (0, 255, 255) if instruction.startswith(
                 ('CONTROLS:', 'MOTOR MAPPING:', 'KEYS:')) else (255, 255, 255)
-            cv2.putText(frame, instruction, (instructions_x + 10, 35 + i * 15),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+            cv2.putText(frame, instruction, (instructions_x + 15, 40 + i * 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
 
-        # FPS counter
-        cv2.putText(frame, f"FPS: {self.current_fps:.1f}", (10, h - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+        # FPS counter - positioned for 720p
+        cv2.putText(frame, f"FPS: {self.current_fps:.1f}", (10, h - 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
 
     def update_fps(self):
         """Update FPS counter."""
@@ -312,10 +304,14 @@ class WebcamControl:
     def start_control(self):
         """Start the advanced webcam control system."""
         args = parse_args()
-        cap = cv2.VideoCapture(args.cam_id)
+        cap = cv2.VideoCapture(args.cam_id, apiPreference=cv2.CAP_MSMF)
         if not cap.isOpened():
             logger.error("Could not open webcam")
             return
+
+        # Set camera resolution to 720p
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
         logger.info("Advanced webcam control started!")
         logger.info("Press 'y' for pose control, 't' for hand control")
@@ -429,7 +425,7 @@ class WebcamControl:
                 # Update FPS
                 self.update_fps()
 
-                cv2.imshow('Advanced Robot Arm Control', frame)
+                cv2.imshow('Robot Arm Control', frame)
 
         except Exception as e:
             logger.error(f"Error in control loop: {e}")
